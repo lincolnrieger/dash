@@ -1,0 +1,32 @@
+name = "dash"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static files (the chat UI, manifest, icons) are served straight from ./public.
+# Anything that isn't a file there (/api/*, /auth/*) falls through to the Worker.
+[assets]
+directory = "./public"
+
+# Workers AI, used for Whisper speech-to-text.
+[ai]
+binding = "AI"
+
+# One namespace holds everything: Google refresh token, Trello cache, undo log, chat history.
+# Create it with `npx wrangler kv namespace create KV` and paste the id below.
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[vars]
+TIMEZONE = "Australia/Adelaide"
+ANTHROPIC_MODEL = "claude-sonnet-5-5"
+GOOGLE_CALENDAR_ID = "primary"
+# Where cards go when you don't name a list. Matched case-insensitively by name.
+TRELLO_DEFAULT_BOARD = "Flinders"
+TRELLO_DEFAULT_LIST = "Miscellaneous"
+# Due time used for Trello cards when you give a date but no time ("HH:MM", local).
+TRELLO_ALL_DAY_DUE_TIME = "23:59"
+
+[observability]
+enabled = true

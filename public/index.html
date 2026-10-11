@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Dash</title>
+  <meta name="description" content="Personal assistant for Google Calendar and Trello">
+  <meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Dash">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <!-- Login -->
+  <main id="login" class="login" hidden>
+    <form id="login-form" class="login-card" autocomplete="on">
+      <img src="/icons/icon.svg" alt="" class="login-logo" width="56" height="56">
+      <h1>Dash</h1>
+      <p class="muted">Your calendar and Trello, one sentence away.</p>
+      <input type="text" name="username" value="me" autocomplete="username" hidden>
+      <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button type="submit" class="primary">Log in</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </main>
+
+  <!-- App -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <img src="/icons/icon.svg" alt="" width="26" height="26">
+        <span>Dash</span>
+      </div>
+      <div class="status" id="status" aria-live="polite"></div>
+      <button id="menu-btn" class="icon-btn" aria-label="Menu" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+      <div id="menu" class="menu" role="menu" hidden>
+        <a id="menu-google" role="menuitem" href="/auth/google">Connect Google</a>
+        <button id="menu-trello" role="menuitem">Refresh Trello lists</button>
+        <button id="menu-clear" role="menuitem">Clear chat</button>
+        <button id="menu-logout" role="menuitem">Log out</button>
+      </div>
+    </header>
+
+    <a id="google-banner" class="banner" href="/auth/google" hidden>
+      <strong>Google isn't connected.</strong> Tap here to connect your calendar.
+    </a>
+
+    <section id="messages" class="messages" aria-live="polite">
+      <div id="empty" class="empty">
+        <p class="empty-title">What do you need to remember?</p>
+        <div class="chips">
+          <button class="chip">Dentist next Thursday 3pm</button>
+          <button class="chip">Lunch with Sam Friday at 1, and remind me to book the restaurant</button>
+          <button class="chip">What's on tomorrow?</button>
+        </div>
+      </div>
+    </section>
+
+    <form id="composer" class="composer">
+      <textarea id="input" rows="1" placeholder="Type or tap the mic…" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea>
+      <button id="action" type="button" class="action" aria-label="Record voice">
+        <svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="i-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+      </button>
+    </form>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <template id="item-tpl">
+    <a class="item" target="_blank" rel="noopener">
+      <span class="item-icon" aria-hidden="true"></span>
+      <span class="item-body">
+        <span class="item-title"></span>
+        <span class="item-meta"></span>
+      </span>
+      <span class="item-open" aria-hidden="true">↗</span>
+    </a>
+  </template>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

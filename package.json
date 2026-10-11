@@ -1,0 +1,30 @@
+{
+  "name": "dash",
+  "version": "1.0.0",
+  "description": "Personal assistant for Google Calendar and Trello on Cloudflare Workers",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc",
+    "test": "node test/run.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lincolnrieger/dash.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lincolnrieger/dash/issues"
+  },
+  "homepage": "https://github.com/lincolnrieger/dash#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261011.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.149.0"
+  },
+  "private": true,
+  "type": "module"
+}
