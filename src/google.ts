@@ -1,4 +1,5 @@
 import { AppError, type Env } from "./env";
+import { logActions } from "./log";
 
 const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const REFRESH_KEY = "google:refresh_token";
@@ -59,6 +60,7 @@ export async function finishGoogleAuth(req: Request, env: Env): Promise<Response
   }
   await env.KV.put(REFRESH_KEY, data.refresh_token);
   if (data.access_token) await cacheAccessToken(env, data.access_token, data.expires_in ?? 3600);
+  await logActions(env, [{ kind: "google", text: "Connected Google Calendar" }]);
   return back("connected");
 }
 

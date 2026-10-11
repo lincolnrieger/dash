@@ -1,6 +1,6 @@
 // Minimal service worker: caches the app shell so it opens instantly from the home screen.
 // API calls and OAuth always go to the network.
-const CACHE = "dash-v1";
+const CACHE = "dash-v2";
 const SHELL = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {

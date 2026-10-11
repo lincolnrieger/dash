@@ -3,9 +3,11 @@ import { chat } from "./agent";
 import { checkOrigin, handleLogin, handleLogout, isAuthed, requireAuth } from "./auth";
 import { AppError, type Env } from "./env";
 import { disconnectGoogle, finishGoogleAuth, isGoogleConnected, startGoogleAuth } from "./google";
+import { clearLog, getLog, logActions } from "./log";
 import { clearHistory, getHistory } from "./store";
 import { undo } from "./tools";
 import { defaultList, getCatalog } from "./trello";
+import { setCredit, usageSummary } from "./usage";
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const UNDO_RE = /^\s*(undo|undo (that|it|last|the last one))\s*[.!]*\s*$/i;
@@ -31,6 +33,7 @@ async function route(req: Request, env: Env): Promise<Response> {
     return path === "/auth/google" ? startGoogleAuth(req, env) : finishGoogleAuth(req, env);
   }
 
+  if (path === "/privacy") return Response.redirect(`${url.origin}/terms#privacy`, 302); // /terms is public/terms.html
   if (!path.startsWith("/api/")) return env.ASSETS.fetch(req);
 
   checkOrigin(req);
@@ -71,8 +74,8 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path === "/api/chat" && method === "POST") {
     const body = (await req.json().catch(() => ({}))) as { message?: string };
     const message = body.message?.trim();
-    if (!message) throw new AppError("empty", "Type or say something first.");
-    if (message.length > 4000) throw new AppError("too_long", "That message is too long.");
+    if (!message) throw new AppError("empty", "Type or say something first 🙂");
+    if (message.length > 4000) throw new AppError("too_long", "That's a bit long for me. Try splitting it up?");
     if (UNDO_RE.test(message)) return json(await undoResponse(env));
     if (!env.ANTHROPIC_API_KEY) throw new AppError("not_configured", "ANTHROPIC_API_KEY secret isn't set.", 500);
     return json(await chat(env, message));
@@ -93,12 +96,34 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   if (path === "/api/google/disconnect" && method === "POST") {
     await disconnectGoogle(env);
+    await logActions(env, [{ kind: "google", text: "Disconnected Google Calendar" }]);
     return json({ ok: true });
   }
 
   if (path === "/api/trello/refresh" && method === "POST") {
     const c = await getCatalog(env, { fresh: true });
+    const lists = c.boards.reduce((n, b) => n + b.lists.length, 0);
+    await logActions(env, [{ kind: "trello", text: `Refreshed Trello: ${c.boards.length} boards, ${lists} lists` }]);
     return json({ boards: c.boards.map((b) => ({ name: b.name, lists: b.lists.map((l) => l.name) })) });
+  }
+
+  if (path === "/api/usage" && method === "GET") return json(await usageSummary(env));
+
+  if (path === "/api/usage/credit" && method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { amount?: number | null };
+    const amount = body.amount === null ? null : Number(body.amount);
+    if (amount !== null && (!Number.isFinite(amount) || amount < 0 || amount > 100000)) {
+      throw new AppError("bad_amount", "Enter your credit balance in US dollars, like 10 or 4.75.");
+    }
+    await setCredit(env, amount);
+    return json(await usageSummary(env));
+  }
+
+  if (path === "/api/log" && method === "GET") return json(await getLog(env));
+
+  if (path === "/api/log" && method === "DELETE") {
+    await clearLog(env);
+    return json({ ok: true });
   }
 
   throw new AppError("not_found", "Not found.", 404);
@@ -107,18 +132,21 @@ async function route(req: Request, env: Env): Promise<Response> {
 async function undoResponse(env: Env) {
   const r = await undo(env);
   let reply: string;
-  if (r.nothing) reply = "There's nothing to undo.";
-  else if (!r.deleted.length) reply = `Couldn't undo: ${r.failed.join("; ")}`;
+  if (r.nothing) reply = "Nothing to undo, you're all clear 👍";
+  else if (!r.deleted.length) reply = `Hmm, I couldn't undo that: ${r.failed.join("; ")}`;
   else {
-    reply = `Undone: removed ${r.deleted.map((d) => `${d.kind === "event" ? "event" : "card"} "${d.title}"`).join(", ")}.`;
-    if (r.failed.length) reply += ` Couldn't remove: ${r.failed.join("; ")}`;
+    reply = `No worries, I've removed ${r.deleted.map((d) => `the ${d.kind === "event" ? "event" : "card"} "${d.title}"`).join(" and ")}.`;
+    if (r.failed.length) reply += ` I couldn't remove: ${r.failed.join("; ")}`;
+    await logActions(env, [
+      { kind: "undo", text: `Undid ${r.deleted.map((d) => `${d.kind === "event" ? "event" : "card"} "${d.title}"`).join(", ")}` },
+    ]);
   }
   return { reply, items: [], deleted: r.deleted, needsGoogle: false };
 }
 
 function errorResponse(e: unknown): Response {
   let code = "server_error";
-  let message = "Something went wrong. Try again in a moment.";
+  let message = "Oops, something went wrong on my end. Give it another go in a moment.";
   let status = 500;
 
   if (e instanceof AppError) {
@@ -127,15 +155,15 @@ function errorResponse(e: unknown): Response {
     code = "ai_error";
     status = 502;
     if (e.status === 401) message = "The Anthropic API key is invalid. Check the ANTHROPIC_API_KEY secret.";
-    else if (e.status === 429 || e.status === 529) message = "The AI is busy right now. Try again in a few seconds.";
+    else if (e.status === 429 || e.status === 529) message = "I'm a little swamped right now. Try again in a few seconds?";
     else if (e.status === 400) message = `The AI request was rejected: ${e.message}`;
-    else message = "Couldn't reach the AI. Try again in a moment.";
+    else message = "I couldn't reach my brain (the AI service). Try again in a moment.";
     console.error("Anthropic error", e.status, e.message);
   } else {
     console.error(e);
   }
   if (e instanceof AppError && e.code === "google_not_connected") {
-    message = "Google isn't connected. Tap here to connect.";
+    message = "Google Calendar isn't connected yet. Tap below to connect it.";
   }
   return Response.json({ error: code, message }, { status, headers: { "Cache-Control": "no-store" } });
 }

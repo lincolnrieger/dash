@@ -1,9 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CreatedItem, Env } from "./env";
+import { logActions } from "./log";
 import { appendHistory, getBatches, getHistory, pushBatch } from "./store";
 import { addDays, formatOffset, nowLocal, prettyDate } from "./time";
 import { TOOLS, ToolContext, runTool } from "./tools";
 import { defaultList } from "./trello";
+import { costUsd, recordUsage } from "./usage";
 
 const MAX_STEPS = 8;
 
@@ -21,9 +23,11 @@ How to work:
 - If a tool fails, say what failed in one plain sentence. If Google isn't connected, tell the user to tap "Connect Google".
 
 Replies:
-- Very short: one line per item. Plain text, no markdown headings, no bullet symbols, no links (the app shows cards with links under your reply).
-- Confirm what you created with its day and date, e.g. "Added Dentist, Thu 15 Oct 3:00–4:00 pm." or "Added 'Renew rego' to Flinders › Miscellaneous."
-- For calendar questions, list events briefly with times.`;
+- Warm, friendly and upbeat, like a helpful friend, but short: one line per item. A light touch of personality is welcome ("Done!", "You're all set", "Easy."), but no gushing and at most one emoji.
+- Plain text, no markdown headings, no bullet symbols, no links (the app shows cards with links under your reply).
+- Confirm what you created with its day and date, e.g. "Done! Dentist is in for Thu 15 Oct, 3:00–4:00 pm." or "Added 'Renew rego' to Flinders › Miscellaneous ✓".
+- For calendar questions, list events briefly with times. If the day is empty, say so nicely ("Nothing on tomorrow, enjoy!").
+- Follow-up questions are friendly and quick, e.g. "Sure! What time is the dentist?"`;
 
 function contextBlock(env: Env, catalogText: string, recent: CreatedItem[]): string {
   const tz = env.TIMEZONE;
@@ -83,62 +87,74 @@ export async function chat(env: Env, userText: string): Promise<ChatResult> {
 
   const messages: Anthropic.Beta.BetaMessageParam[] = [...history, { role: "user", content: userText }];
   let reply = "";
+  const spend = { cost: 0, tokensIn: 0, tokensOut: 0 };
 
-  for (let step = 0; step < MAX_STEPS; step++) {
-    const response = await client.beta.messages.create({
-      model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
-      max_tokens: 16000,
-      // Stable instructions first (cacheable), then the per-request date/catalogue context.
-      system: [
-        { type: "text", text: INSTRUCTIONS, cache_control: { type: "ephemeral" } },
-        { type: "text", text: contextBlock(env, catalog, recent) },
-      ],
-      tools: TOOLS,
-      messages,
-      output_config: { effort: "medium" },
-      // If Sonnet declines a request on safety grounds, let the API retry it on a fallback model.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    });
+  const model = env.ANTHROPIC_MODEL || "claude-haiku-5-5";
+  const effort = (["low", "medium", "high"].includes(env.ANTHROPIC_EFFORT) ? env.ANTHROPIC_EFFORT : "low") as "low" | "medium" | "high";
+  // Server-side refusal fallback exists for Sonnet/Opus but not Haiku (sending it to Haiku is an error).
+  const fallback = model.startsWith("claude-haiku") ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
 
-    if (response.stop_reason === "refusal") {
-      reply = "Sorry, I can't help with that one.";
-      break;
+  try {
+    for (let step = 0; step < MAX_STEPS; step++) {
+      const response = await client.beta.messages.create({
+        model,
+        max_tokens: 16000,
+        // Stable instructions first (cacheable), then the per-request date/catalogue context.
+        system: [
+          { type: "text", text: INSTRUCTIONS, cache_control: { type: "ephemeral" } },
+          { type: "text", text: contextBlock(env, catalog, recent) },
+        ],
+        tools: TOOLS,
+        messages,
+        output_config: { effort },
+        ...fallback,
+      });
+      spend.cost += costUsd(response.model || model, response.usage);
+      spend.tokensIn += response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0) + (response.usage.cache_creation_input_tokens ?? 0);
+      spend.tokensOut += response.usage.output_tokens;
+
+      if (response.stop_reason === "refusal") {
+        reply = "Sorry, that's one I can't help with.";
+        break;
+      }
+
+      messages.push({ role: "assistant", content: response.content });
+      const text = response.content
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+
+      if (response.stop_reason !== "tool_use") {
+        reply = text;
+        break;
+      }
+
+      const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+      const results = await Promise.all(
+        toolUses.map(async (tu, i): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
+          try {
+            const out = await runTool(ctx, tu.name, (tu.input ?? {}) as Record<string, unknown>, step * 100 + i);
+            return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) };
+          } catch (e) {
+            console.error(`tool ${tu.name} failed`, e);
+            return { type: "tool_result", tool_use_id: tu.id, content: (e as Error).message, is_error: true };
+          }
+        }),
+      );
+      messages.push({ role: "user", content: results });
     }
-
-    messages.push({ role: "assistant", content: response.content });
-    const text = response.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-
-    if (response.stop_reason !== "tool_use") {
-      reply = text;
-      break;
-    }
-
-    const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-    const results = await Promise.all(
-      toolUses.map(async (tu, i): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
-        try {
-          const out = await runTool(ctx, tu.name, (tu.input ?? {}) as Record<string, unknown>, step * 100 + i);
-          return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) };
-        } catch (e) {
-          console.error(`tool ${tu.name} failed`, e);
-          return { type: "tool_result", tool_use_id: tu.id, content: (e as Error).message, is_error: true };
-        }
-      }),
-    );
-    messages.push({ role: "user", content: results });
+  } finally {
+    // Count what this request cost even if something failed halfway.
+    if (spend.tokensIn) await recordUsage(env, spend.cost, spend.tokensIn, spend.tokensOut).catch(() => {});
   }
 
   if (!reply) {
     reply = ctx.created.length
       ? `Done: ${ctx.created.map((i) => i.title).join(", ")}.`
       : ctx.needsGoogle
-        ? "Google Calendar isn't connected yet. Tap Connect Google."
-        : "Sorry, I couldn't finish that. Try rephrasing?";
+        ? "I'd love to, but Google Calendar isn't connected yet. Tap Connect Google and I'll sort it."
+        : "Hmm, I couldn't quite finish that. Mind rephrasing?";
   }
 
   // Remember the exchange as plain text. Mention created items so follow-ups ("move it to 4pm") have context.
@@ -146,6 +162,14 @@ export async function chat(env: Env, userText: string): Promise<ChatResult> {
   await Promise.all([
     appendHistory(env, { role: "user", content: userText }, { role: "assistant", content: reply + memo }),
     pushBatch(env, ctx.created),
+    logActions(env, [
+      ...ctx.created.map((i) => ({
+        kind: "created" as const,
+        text: `Added ${i.kind === "event" ? "event" : "card"} "${i.title}"${i.when ? ` (${i.when})` : ""}${i.where ? ` · ${i.where}` : ""}`,
+        url: i.url,
+      })),
+      ...ctx.deleted.map((i) => ({ kind: "deleted" as const, text: `Deleted ${i.kind === "event" ? "event" : "card"} "${i.title}"` })),
+    ]),
   ]);
 
   return { reply, items: ctx.created, deleted: ctx.deleted, needsGoogle: ctx.needsGoogle };

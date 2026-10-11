@@ -5,6 +5,8 @@ import { chat } from "../src/agent";
 import type { Env } from "../src/env";
 import { getBatches, getHistory } from "../src/store";
 import { undo } from "../src/tools";
+import { getLog } from "../src/log";
+import { costUsd, setCredit, usageSummary } from "../src/usage";
 import { addDays, localToUtc, nowLocal, prettyLocal, tzOffsetMinutes } from "../src/time";
 
 // ---------- in-memory KV ----------
@@ -28,7 +30,8 @@ kv.m.set("google:refresh_token", "rt"); // pretend Google is already connected
 const env = {
   KV: kv,
   TIMEZONE: "Australia/Adelaide",
-  ANTHROPIC_MODEL: "claude-sonnet-5-5",
+  ANTHROPIC_MODEL: "claude-haiku-5-5",
+  ANTHROPIC_EFFORT: "low",
   GOOGLE_CALENDAR_ID: "primary",
   TRELLO_DEFAULT_BOARD: "Flinders",
   TRELLO_DEFAULT_LIST: "Miscellaneous",
@@ -143,9 +146,10 @@ await test("one message creates an event and a card; system prompt carries date 
   assert.match(res.reply, /Lunch with Sam/);
 
   const first = calls.find((c) => c.url.includes("api.anthropic.com"))!;
-  assert.equal(first.body.model, "claude-sonnet-5-5");
-  assert.equal(first.body.fallbacks, "default");
-  assert.match(first.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
+  assert.equal(first.body.model, "claude-haiku-5-5");
+  assert.deepEqual(first.body.output_config, { effort: "low" });
+  assert.equal(first.body.fallbacks, undefined, "Haiku has no server-side fallback");
+  assert.doesNotMatch(first.headers["anthropic-beta"] ?? "", /server-side-fallback/);
   const sys = first.body.system.map((b: any) => b.text).join("\n");
   assert.match(sys, /Current local date and time: .* \(Australia\/Adelaide, UTC\+10:30\)/);
   assert.match(sys, /list "Miscellaneous" id=l5/);
@@ -265,6 +269,49 @@ await test("revoked Google token flags needsGoogle and clears the stored token",
   assert.equal(res.needsGoogle, true);
   assert.equal(await kv.get("google:refresh_token"), null);
   googleConnected = true;
+});
+
+await test("Sonnet requests opt into the server-side refusal fallback", async () => {
+  const sonnetEnv = { ...env, ANTHROPIC_MODEL: "claude-sonnet-5-5", ANTHROPIC_EFFORT: "medium" } as Env;
+  anthropicScript = [{ stop_reason: "end_turn", content: [text("Nothing on Monday.")] }];
+  await chat(sonnetEnv, "anything monday?");
+  const last = calls.filter((c) => c.url.includes("api.anthropic.com")).at(-1)!;
+  assert.equal(last.body.model, "claude-sonnet-5-5");
+  assert.equal(last.body.fallbacks, "default");
+  assert.match(last.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
+  assert.deepEqual(last.body.output_config, { effort: "medium" });
+});
+
+await test("cost maths matches Haiku and Sonnet prices", async () => {
+  // 1M input + 1M output tokens
+  assert.equal(costUsd("claude-haiku-5-5", { input_tokens: 1e6, output_tokens: 1e6 }), 0.6);
+  assert.equal(costUsd("claude-sonnet-5-5", { input_tokens: 1e6, output_tokens: 1e6 }), 12);
+  // cache reads are 10% of input price, writes 125%
+  assert.equal(costUsd("claude-haiku-5-5", { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1e6 }), 0.01);
+  assert.equal(costUsd("claude-haiku-5-5", { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 1e6 }), 0.125);
+});
+
+await test("usage totals and credit countdown", async () => {
+  const before = await usageSummary(env);
+  assert.ok(before.allTime.requests >= 6, "every chat so far was counted");
+  assert.ok(before.today.requests >= 1);
+  await setCredit(env, 5);
+  anthropicScript = [{ stop_reason: "end_turn", content: [text("Nothing on.")], usage: { input_tokens: 4000, output_tokens: 1000 } }];
+  await chat(env, "anything on sunday?");
+  const after = await usageSummary(env);
+  const expected = (4000 * 0.1 + 1000 * 0.5) / 1e6;
+  assert.ok(Math.abs(after.allTime.cost - before.allTime.cost - expected) < 1e-12);
+  assert.ok(Math.abs(after.credit!.remaining - (5 - expected)) < 1e-12);
+  await setCredit(env, null);
+  assert.equal((await usageSummary(env)).credit, null);
+});
+
+await test("activity log records creates and deletes, newest first", async () => {
+  const log = await getLog(env);
+  assert.ok(log.length >= 4);
+  assert.ok(log.some((e) => e.kind === "created" && e.text.includes('"Lunch with Sam"') && e.url));
+  assert.ok(log.some((e) => e.kind === "deleted" && e.text.includes("Renew rego")));
+  assert.ok(log[0].at >= log.at(-1)!.at);
 });
 
 await test("history is capped at 10 messages and starts with a user turn", async () => {

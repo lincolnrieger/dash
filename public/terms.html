@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Terms &amp; Privacy · Dash</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <style>
+    body { overflow-y: auto; }
+    .doc { max-width: 640px; margin: 0 auto; padding: calc(24px + var(--safe-t)) 20px calc(40px + var(--safe-b)); }
+    .doc h1 { font-size: 1.6rem; letter-spacing: -0.02em; margin: 16px 0 4px; }
+    .doc h2 { font-size: 1.15rem; margin: 28px 0 6px; }
+    .doc p, .doc li { line-height: 1.55; }
+    .doc ul { padding-left: 1.2em; }
+    .back { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; }
+    .back img { border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <main class="doc">
+    <a class="back" href="/"><img src="/icons/icon.svg" alt="" width="26" height="26"> ← Back to Dash</a>
+
+    <h1>Terms &amp; Privacy</h1>
+    <p class="muted">Last updated 11 October 2026</p>
+
+    <h2>Terms of use</h2>
+    <ul>
+      <li>Dash is a private, personal app run by its owner for their own use. It isn't a commercial service and there's no sign-up.</li>
+      <li>It's provided as is, without warranties of any kind. It uses AI to understand requests and can get things wrong, so check important dates and times.</li>
+      <li>The owner isn't liable for missed appointments, lost data or any other loss from using Dash.</li>
+      <li>Keep your password private. Anyone with it can add to and remove from the connected calendar and Trello boards.</li>
+      <li>Dash relies on Google Calendar, Trello, Anthropic and Cloudflare, and their own terms apply to those services.</li>
+      <li>These terms may change at any time. Using Dash after a change means you accept the new version.</li>
+    </ul>
+
+    <h2 id="privacy">Privacy</h2>
+    <ul>
+      <li><strong>What's stored:</strong> a Google sign-in token, a copy of your Trello board and list names, your last 10 chat messages, a list of recently created items (for undo), an activity log and usage totals. Everything is stored in Cloudflare KV in the owner's Cloudflare account.</li>
+      <li><strong>What's sent elsewhere:</strong> your messages, along with your Trello list names, go to Anthropic so its AI can understand them. Voice recordings go to Cloudflare Workers AI to be transcribed and aren't kept.</li>
+      <li><strong>Google data:</strong> Dash only asks for access to calendar events. It uses that access solely to create, read and delete events when you ask it to. Your Google data is never sold, shared, or used for ads or AI training. Dash's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements.</li>
+      <li><strong>Removing your data:</strong> use <em>Clear chat</em> and <em>Clear activity</em> in the menu. To revoke Google access, visit <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">your Google account permissions</a>. To revoke Trello access, go to your Trello account settings under Applications.</li>
+      <li>No cookies are used except one that keeps you logged in.</li>
+    </ul>
+  </main>
+</body>
+</html>

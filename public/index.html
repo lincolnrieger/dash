@@ -23,11 +23,13 @@
     <form id="login-form" class="login-card" autocomplete="on">
       <img src="/icons/icon.svg" alt="" class="login-logo" width="56" height="56">
       <h1>Dash</h1>
-      <p class="muted">Your calendar and Trello, one sentence away.</p>
+      <p class="tagline">Your life, sorted.</p>
+      <p class="muted">Say it once. I'll put it where it belongs.</p>
       <input type="text" name="username" value="me" autocomplete="username" hidden>
       <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
       <button type="submit" class="primary">Log in</button>
       <p id="login-error" class="error" role="alert"></p>
+      <a class="fine" href="/terms.html">Terms &amp; privacy</a>
     </form>
   </main>
 
@@ -43,20 +45,26 @@
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
       </button>
       <div id="menu" class="menu" role="menu" hidden>
-        <a id="menu-google" role="menuitem" href="/auth/google">Connect Google</a>
-        <button id="menu-trello" role="menuitem">Refresh Trello lists</button>
-        <button id="menu-clear" role="menuitem">Clear chat</button>
-        <button id="menu-logout" role="menuitem">Log out</button>
+        <button id="menu-usage" role="menuitem"><span aria-hidden="true">💰</span> Usage &amp; credit</button>
+        <button id="menu-log" role="menuitem"><span aria-hidden="true">📋</span> Activity</button>
+        <hr>
+        <a id="menu-google" role="menuitem" href="/auth/google"><span aria-hidden="true">📅</span> Connect Google</a>
+        <button id="menu-trello" role="menuitem"><span aria-hidden="true">🔄</span> Refresh Trello lists</button>
+        <button id="menu-clear" role="menuitem"><span aria-hidden="true">🧹</span> Clear chat</button>
+        <hr>
+        <a role="menuitem" href="/terms.html"><span aria-hidden="true">📄</span> Terms &amp; privacy</a>
+        <button id="menu-logout" role="menuitem"><span aria-hidden="true">👋</span> Log out</button>
       </div>
     </header>
 
     <a id="google-banner" class="banner" href="/auth/google" hidden>
-      <strong>Google isn't connected.</strong> Tap here to connect your calendar.
+      <strong>One quick thing:</strong> tap here to connect your Google Calendar.
     </a>
 
     <section id="messages" class="messages" aria-live="polite">
       <div id="empty" class="empty">
-        <p class="empty-title">What do you need to remember?</p>
+        <p class="empty-title" id="greeting">Hey there 👋</p>
+        <p class="empty-sub">What can I sort out for you? Type it or tap the mic. Try one of these:</p>
         <div class="chips">
           <button class="chip">Dentist next Thursday 3pm</button>
           <button class="chip">Lunch with Sam Friday at 1, and remind me to book the restaurant</button>
@@ -66,7 +74,7 @@
     </section>
 
     <form id="composer" class="composer">
-      <textarea id="input" rows="1" placeholder="Type or tap the mic…" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea>
+      <textarea id="input" rows="1" placeholder="Tell me anything…" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea>
       <button id="action" type="button" class="action" aria-label="Record voice">
         <svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke-width="2" stroke-linecap="round"/></svg>
         <svg class="i-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -74,6 +82,33 @@
       </button>
     </form>
   </div>
+
+  <!-- Usage & credit -->
+  <dialog id="usage-sheet" class="sheet" aria-labelledby="usage-title">
+    <div class="sheet-head">
+      <h2 id="usage-title">Usage &amp; credit</h2>
+      <button class="icon-btn sheet-close" aria-label="Close">✕</button>
+    </div>
+    <div id="usage-body" class="sheet-body"><p class="muted">Loading…</p></div>
+    <form id="credit-form" class="credit-form">
+      <label for="credit-input">My Anthropic credit balance right now (US$)</label>
+      <div class="credit-row">
+        <input id="credit-input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 5.00">
+        <button type="submit" class="primary small">Save</button>
+      </div>
+      <p class="fine">Anthropic doesn't share your balance with apps, so Dash adds up what each request costs and counts down from the number you enter here. For the exact figure, check <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">your Anthropic billing page</a>.</p>
+    </form>
+  </dialog>
+
+  <!-- Activity log -->
+  <dialog id="log-sheet" class="sheet" aria-labelledby="log-title">
+    <div class="sheet-head">
+      <h2 id="log-title">Activity</h2>
+      <button class="icon-btn sheet-close" aria-label="Close">✕</button>
+    </div>
+    <ul id="log-list" class="log-list"><li class="muted">Loading…</li></ul>
+    <button id="log-clear" class="ghost">Clear activity</button>
+  </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
 
