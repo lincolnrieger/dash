@@ -155,7 +155,7 @@ await test("one message creates an event and a card; system prompt carries date 
   assert.match(sys, /list "Miscellaneous" id=l5/);
   assert.match(sys, /Default list: "Miscellaneous" on board "Flinders"/);
 
-  // Second Anthropic call must contain both tool results in one user message.
+  // A label wasn't found, so the model gets a second call (with both tool results in one message) to explain.
   const second = calls.filter((c) => c.url.includes("api.anthropic.com"))[1];
   const lastMsg = second.body.messages.at(-1);
   assert.equal(lastMsg.role, "user");
@@ -189,7 +189,11 @@ await test("all-day event uses exclusive end date", async () => {
     { stop_reason: "tool_use", content: [toolUse("t1", "create_calendar_event", { title: "Mum's birthday", start: "2026-11-02" })] },
     { stop_reason: "end_turn", content: [text("Added Mum's birthday, Mon 2 Nov (all day).")] },
   ];
+  const before = calls.filter((c) => c.url.includes("api.anthropic.com")).length;
   const res = await chat(env, "mum's birthday 2 Nov");
+  // Clean success → confirmation written locally, no second (paid) model call.
+  assert.equal(calls.filter((c) => c.url.includes("api.anthropic.com")).length, before + 1);
+  assert.equal(res.reply, 'Done! "Mum\'s birthday" is in for Mon 2 Nov (all day).');
   const ev = googleEvents.at(-1);
   assert.deepEqual(ev.start, { date: "2026-11-02" });
   assert.deepEqual(ev.end, { date: "2026-11-03" });
@@ -280,6 +284,18 @@ await test("Sonnet requests opt into the server-side refusal fallback", async ()
   assert.equal(last.body.fallbacks, "default");
   assert.match(last.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
   assert.deepEqual(last.body.output_config, { effort: "medium" });
+});
+
+await test("a follow-up question asked alongside tool calls is kept", async () => {
+  anthropicScript = [
+    {
+      stop_reason: "tool_use",
+      content: [text("Sure! And what time is the dentist?"), toolUse("t1", "create_trello_card", { title: "Buy milk" })],
+    },
+  ];
+  const res = await chat(env, "buy milk, and dentist thursday");
+  assert.equal(res.reply, 'Added "Buy milk" to Flinders › Miscellaneous ✓\nSure! And what time is the dentist?');
+  await undo(env);
 });
 
 await test("cost maths matches Haiku and Sonnet prices", async () => {
