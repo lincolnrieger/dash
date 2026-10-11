@@ -28,7 +28,8 @@ kv.m.set("google:refresh_token", "rt"); // pretend Google is already connected
 const env = {
   KV: kv,
   TIMEZONE: "Australia/Adelaide",
-  ANTHROPIC_MODEL: "claude-sonnet-5-5",
+  ANTHROPIC_MODEL: "claude-haiku-5-5",
+  ANTHROPIC_EFFORT: "low",
   GOOGLE_CALENDAR_ID: "primary",
   TRELLO_DEFAULT_BOARD: "Flinders",
   TRELLO_DEFAULT_LIST: "Miscellaneous",
@@ -143,9 +144,10 @@ await test("one message creates an event and a card; system prompt carries date 
   assert.match(res.reply, /Lunch with Sam/);
 
   const first = calls.find((c) => c.url.includes("api.anthropic.com"))!;
-  assert.equal(first.body.model, "claude-sonnet-5-5");
-  assert.equal(first.body.fallbacks, "default");
-  assert.match(first.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
+  assert.equal(first.body.model, "claude-haiku-5-5");
+  assert.deepEqual(first.body.output_config, { effort: "low" });
+  assert.equal(first.body.fallbacks, undefined, "Haiku has no server-side fallback");
+  assert.doesNotMatch(first.headers["anthropic-beta"] ?? "", /server-side-fallback/);
   const sys = first.body.system.map((b: any) => b.text).join("\n");
   assert.match(sys, /Current local date and time: .* \(Australia\/Adelaide, UTC\+10:30\)/);
   assert.match(sys, /list "Miscellaneous" id=l5/);
@@ -265,6 +267,17 @@ await test("revoked Google token flags needsGoogle and clears the stored token",
   assert.equal(res.needsGoogle, true);
   assert.equal(await kv.get("google:refresh_token"), null);
   googleConnected = true;
+});
+
+await test("Sonnet requests opt into the server-side refusal fallback", async () => {
+  const sonnetEnv = { ...env, ANTHROPIC_MODEL: "claude-sonnet-5-5", ANTHROPIC_EFFORT: "medium" } as Env;
+  anthropicScript = [{ stop_reason: "end_turn", content: [text("Nothing on Monday.")] }];
+  await chat(sonnetEnv, "anything monday?");
+  const last = calls.filter((c) => c.url.includes("api.anthropic.com")).at(-1)!;
+  assert.equal(last.body.model, "claude-sonnet-5-5");
+  assert.equal(last.body.fallbacks, "default");
+  assert.match(last.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
+  assert.deepEqual(last.body.output_config, { effort: "medium" });
 });
 
 await test("history is capped at 10 messages and starts with a user turn", async () => {

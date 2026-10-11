@@ -20,7 +20,10 @@ id = "b230de14507c4085a2ead181a8d0d326"
 
 [vars]
 TIMEZONE = "Australia/Adelaide"
-ANTHROPIC_MODEL = "claude-sonnet-5-5"
+# Haiku 5.5 is ~20x cheaper than Sonnet (well under 1 cent per request). Use "claude-sonnet-5-5" for smarter but pricier.
+ANTHROPIC_MODEL = "claude-haiku-5-5"
+# How hard the model thinks: "low" (cheapest), "medium" or "high".
+ANTHROPIC_EFFORT = "low"
 GOOGLE_CALENDAR_ID = "primary"
 # Where cards go when you don't name a list. Matched case-insensitively by name.
 TRELLO_DEFAULT_BOARD = "Flinders"

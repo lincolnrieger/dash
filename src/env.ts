@@ -6,6 +6,7 @@ export interface Env {
   // vars (wrangler.toml)
   TIMEZONE: string;
   ANTHROPIC_MODEL: string;
+  ANTHROPIC_EFFORT: string;
   GOOGLE_CALENDAR_ID: string;
   TRELLO_DEFAULT_BOARD: string;
   TRELLO_DEFAULT_LIST: string;

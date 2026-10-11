@@ -10,7 +10,7 @@ A personal assistant that runs entirely on Cloudflare Workers. Type or speak a q
 "undo"
 ```
 
-- **Brain:** Claude Sonnet 5.5 (`claude-sonnet-5-5`) with tool calling. Each request gets the current date and time in Australia/Adelaide, plus your Trello boards and lists.
+- **Brain:** Claude Haiku 5.5 (`claude-haiku-5-5`, the cheap and fast model) with tool calling. You can switch to Sonnet 5.5 in `wrangler.toml`. Each request gets the current date and time in Australia/Adelaide, plus your Trello boards and lists.
 - **Voice:** the browser records audio (MediaRecorder), and Workers AI Whisper transcribes it. The transcript appears in the chat before it's processed.
 - **Storage:** one KV namespace holds the Google refresh token, the Trello board/list cache (1 hour), the undo log and the last 10 chat messages.
 - **Auth:** a password login sets a signed, HttpOnly cookie that lasts 30 days. Every `/api/*` route checks it.
@@ -117,7 +117,8 @@ Non-secret settings live in `[vars]` in `wrangler.toml`. Run `npx wrangler deplo
 | Var | Default | What it does |
 | --- | --- | --- |
 | `TIMEZONE` | `Australia/Adelaide` | All relative dates resolve here, and the current local time is sent with every request. |
-| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | The Claude model used. |
+| `ANTHROPIC_MODEL` | `claude-haiku-5-5` | The Claude model used. Haiku costs well under 1 cent per request; `claude-sonnet-5-5` is smarter but about 20x the price. |
+| `ANTHROPIC_EFFORT` | `low` | How much the model thinks: `low` (cheapest), `medium` or `high`. |
 | `GOOGLE_CALENDAR_ID` | `primary` | Calendar that events go into. |
 | `TRELLO_DEFAULT_BOARD` | `Flinders` | Board holding the default list. |
 | `TRELLO_DEFAULT_LIST` | `Miscellaneous` | Where cards go when you don't name a list. To use a "To Do" list, change this (and the board). |
@@ -132,7 +133,7 @@ Trello boards and lists are cached for an hour. If you add a list and want it st
 - **Defaults:** events last 1 hour unless you give an end time. Things like birthdays become all-day events. Cards only get a due date if you say one, and a due time only if you give a specific time.
 - **Undo:** typing or saying "undo", or tapping **Undo** under a reply, deletes everything the last message created. Repeat it to go further back (up to 10 messages). You can also say "delete the dentist one".
 - **Questions:** "what's on tomorrow?" or "am I free Friday afternoon?" read your calendar.
-- If Claude declines a request on safety grounds, the API automatically retries it on a fallback model. This uses the `server-side-fallback-2026-07-01` beta with `fallbacks: "default"`; remove those two lines in `src/agent.ts` if you don't want it.
+- On Sonnet (not Haiku, which doesn't support it), if Claude declines a request on safety grounds, the API automatically retries it on a fallback model (`server-side-fallback-2026-07-01` beta, `fallbacks: "default"`).
 
 ## Local development
 

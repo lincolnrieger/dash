@@ -84,9 +84,14 @@ export async function chat(env: Env, userText: string): Promise<ChatResult> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [...history, { role: "user", content: userText }];
   let reply = "";
 
+  const model = env.ANTHROPIC_MODEL || "claude-haiku-5-5";
+  const effort = (["low", "medium", "high"].includes(env.ANTHROPIC_EFFORT) ? env.ANTHROPIC_EFFORT : "low") as "low" | "medium" | "high";
+  // Server-side refusal fallback exists for Sonnet/Opus but not Haiku (sending it to Haiku is an error).
+  const fallback = model.startsWith("claude-haiku") ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
+
   for (let step = 0; step < MAX_STEPS; step++) {
     const response = await client.beta.messages.create({
-      model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
+      model,
       max_tokens: 16000,
       // Stable instructions first (cacheable), then the per-request date/catalogue context.
       system: [
@@ -95,10 +100,8 @@ export async function chat(env: Env, userText: string): Promise<ChatResult> {
       ],
       tools: TOOLS,
       messages,
-      output_config: { effort: "medium" },
-      // If Sonnet declines a request on safety grounds, let the API retry it on a fallback model.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      output_config: { effort },
+      ...fallback,
     });
 
     if (response.stop_reason === "refusal") {
