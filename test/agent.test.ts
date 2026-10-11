@@ -5,6 +5,8 @@ import { chat } from "../src/agent";
 import type { Env } from "../src/env";
 import { getBatches, getHistory } from "../src/store";
 import { undo } from "../src/tools";
+import { getLog } from "../src/log";
+import { costUsd, setCredit, usageSummary } from "../src/usage";
 import { addDays, localToUtc, nowLocal, prettyLocal, tzOffsetMinutes } from "../src/time";
 
 // ---------- in-memory KV ----------
@@ -278,6 +280,38 @@ await test("Sonnet requests opt into the server-side refusal fallback", async ()
   assert.equal(last.body.fallbacks, "default");
   assert.match(last.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
   assert.deepEqual(last.body.output_config, { effort: "medium" });
+});
+
+await test("cost maths matches Haiku and Sonnet prices", async () => {
+  // 1M input + 1M output tokens
+  assert.equal(costUsd("claude-haiku-5-5", { input_tokens: 1e6, output_tokens: 1e6 }), 0.6);
+  assert.equal(costUsd("claude-sonnet-5-5", { input_tokens: 1e6, output_tokens: 1e6 }), 12);
+  // cache reads are 10% of input price, writes 125%
+  assert.equal(costUsd("claude-haiku-5-5", { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1e6 }), 0.01);
+  assert.equal(costUsd("claude-haiku-5-5", { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 1e6 }), 0.125);
+});
+
+await test("usage totals and credit countdown", async () => {
+  const before = await usageSummary(env);
+  assert.ok(before.allTime.requests >= 6, "every chat so far was counted");
+  assert.ok(before.today.requests >= 1);
+  await setCredit(env, 5);
+  anthropicScript = [{ stop_reason: "end_turn", content: [text("Nothing on.")], usage: { input_tokens: 4000, output_tokens: 1000 } }];
+  await chat(env, "anything on sunday?");
+  const after = await usageSummary(env);
+  const expected = (4000 * 0.1 + 1000 * 0.5) / 1e6;
+  assert.ok(Math.abs(after.allTime.cost - before.allTime.cost - expected) < 1e-12);
+  assert.ok(Math.abs(after.credit!.remaining - (5 - expected)) < 1e-12);
+  await setCredit(env, null);
+  assert.equal((await usageSummary(env)).credit, null);
+});
+
+await test("activity log records creates and deletes, newest first", async () => {
+  const log = await getLog(env);
+  assert.ok(log.length >= 4);
+  assert.ok(log.some((e) => e.kind === "created" && e.text.includes('"Lunch with Sam"') && e.url));
+  assert.ok(log.some((e) => e.kind === "deleted" && e.text.includes("Renew rego")));
+  assert.ok(log[0].at >= log.at(-1)!.at);
 });
 
 await test("history is capped at 10 messages and starts with a user turn", async () => {

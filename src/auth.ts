@@ -1,4 +1,5 @@
 import { AppError, type Env } from "./env";
+import { logActions } from "./log";
 
 const COOKIE = "dash_session";
 const SESSION_DAYS = 30;
@@ -77,15 +78,17 @@ export async function handleLogin(req: Request, env: Env): Promise<Response> {
   const failKey = `login_fail:${ip}`;
   const failures = Number((await env.KV.get(failKey)) ?? 0);
   if (failures >= MAX_LOGIN_FAILURES) {
-    throw new AppError("rate_limited", "Too many wrong passwords. Try again in 15 minutes.", 429);
+    throw new AppError("rate_limited", "Too many wrong tries. Take a breather and try again in 15 minutes.", 429);
   }
 
   const body = (await req.json().catch(() => ({}))) as { password?: string };
   if (!body.password || !(await safeEqual(body.password, env.APP_PASSWORD))) {
     await env.KV.put(failKey, String(failures + 1), { expirationTtl: 900 });
-    throw new AppError("bad_password", "That password isn't right.", 401);
+    await logActions(env, [{ kind: "login", text: `Wrong password entered (from ${ip})` }]);
+    throw new AppError("bad_password", "Hmm, that's not the right password. Try again?", 401);
   }
 
+  await logActions(env, [{ kind: "login", text: "Logged in" }]);
   const exp = String(Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400);
   const value = `${exp}.${await sign(env, exp)}`;
   return Response.json({ ok: true }, { headers: { "Set-Cookie": sessionCookie(value, SESSION_DAYS * 86400) } });

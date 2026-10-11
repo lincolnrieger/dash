@@ -19,6 +19,13 @@ const els = {
   menuGoogle: $("#menu-google"),
   toast: $("#toast"),
   itemTpl: $("#item-tpl"),
+  greeting: $("#greeting"),
+  usageSheet: $("#usage-sheet"),
+  usageBody: $("#usage-body"),
+  creditForm: $("#credit-form"),
+  creditInput: $("#credit-input"),
+  logSheet: $("#log-sheet"),
+  logList: $("#log-list"),
 };
 
 const MAX_RECORD_MS = 60_000;
@@ -67,9 +74,16 @@ function showLogin() {
   setTimeout(() => els.password.focus(), 50);
 }
 
+function greet() {
+  const h = new Date().getHours();
+  const hello = h < 5 ? "Up late? 🌙" : h < 12 ? "Good morning ☀️" : h < 17 ? "Good afternoon 👋" : "Good evening 🌆";
+  els.greeting.textContent = hello;
+}
+
 async function showApp() {
   els.login.hidden = true;
   els.app.hidden = false;
+  greet();
   await Promise.all([refreshStatus(), loadHistory()]);
 }
 
@@ -84,7 +98,7 @@ async function refreshStatus() {
   try {
     const s = await api("/api/status");
     els.banner.hidden = s.google;
-    els.menuGoogle.textContent = s.google ? "Reconnect Google" : "Connect Google";
+    els.menuGoogle.lastChild.textContent = s.google ? " Reconnect Google" : " Connect Google";
     els.status.replaceChildren(
       pill("Calendar", s.google),
       pill(s.trello.ok ? "Trello" : "Trello", s.trello.ok, s.trello.ok ? s.trello.defaultList : s.trello.error),
@@ -307,14 +321,14 @@ function pickMime() {
 async function startRecording() {
   if (busy || recorder) return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    toast("Voice recording isn't supported in this browser.");
+    toast("Voice isn't supported in this browser, but typing works great!");
     return;
   }
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   } catch {
-    toast("Microphone access was blocked. Allow it in your browser settings.");
+    toast("I need microphone access for that. You can allow it in your browser settings.");
     return;
   }
   const mime = pickMime();
@@ -328,12 +342,12 @@ async function startRecording() {
     clearTimeout(rec.limit);
     recorder = null;
     els.composer.classList.remove("recording");
-    els.input.placeholder = "Type or tap the mic…";
+    els.input.placeholder = "Tell me anything…";
     syncAction();
     if (rec.cancelled) return;
     const blob = new Blob(chunks, { type: rec.mimeType || mime || "audio/webm" });
     if (Date.now() - started < 600 || blob.size < 1000) {
-      toast("That was a bit short. Tap the mic, speak, then tap again.");
+      toast("That was super quick! Tap the mic, say your thing, then tap again.");
       return;
     }
     transcribeAndSend(blob);
@@ -344,7 +358,7 @@ async function startRecording() {
   els.composer.classList.add("recording");
   const tick = () => {
     const s = Math.floor((Date.now() - started) / 1000);
-    els.input.placeholder = `Listening… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}  tap ■ to finish`;
+    els.input.placeholder = `I'm listening… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}  tap ■ when done`;
   };
   tick();
   rec.timer = setInterval(tick, 500);
@@ -360,7 +374,7 @@ function stopRecording() {
 
 async function transcribeAndSend(blob) {
   setBusy(true);
-  const userMsg = addMessage("user", "Transcribing…", { className: "pending" });
+  const userMsg = addMessage("user", "Writing that down…", { className: "pending" });
   try {
     const { text } = await api("/api/transcribe", {
       method: "POST",
@@ -401,7 +415,7 @@ $("#menu-trello").addEventListener("click", async () => {
   try {
     const r = await api("/api/trello/refresh", { method: "POST", json: {} });
     const lists = r.boards.reduce((n, b) => n + b.lists.length, 0);
-    toast(`Trello refreshed: ${r.boards.length} boards, ${lists} lists.`);
+    toast(`Trello's up to date: ${r.boards.length} boards, ${lists} lists ✓`);
     refreshStatus();
   } catch (e) {
     toast(e.message);
@@ -421,6 +435,169 @@ $("#menu-logout").addEventListener("click", async () => {
   closeMenu();
   await api("/api/logout", { method: "POST", json: {} }).catch(() => {});
   showLogin();
+});
+
+// ---------------- Usage & credit ----------------
+
+function money(usd) {
+  if (!usd) return "0¢";
+  if (usd < 1) {
+    const c = usd * 100;
+    return `${c < 0.1 && c > 0 ? c.toFixed(3) : c < 10 ? c.toFixed(2) : c.toFixed(1)}¢`;
+  }
+  return `$${usd.toFixed(2)}`;
+}
+
+function stat(label, value, sub) {
+  const d = document.createElement("div");
+  d.className = "stat";
+  d.innerHTML = '<div class="stat-label"></div><div class="stat-value"></div><div class="stat-sub"></div>';
+  d.children[0].textContent = label;
+  d.children[1].textContent = value;
+  d.children[2].textContent = sub || "";
+  return d;
+}
+
+function renderUsage(u) {
+  const body = document.createDocumentFragment();
+
+  const credit = document.createElement("div");
+  credit.className = "credit-card";
+  if (u.credit) {
+    const left = Math.max(0, u.credit.remaining);
+    const pct = u.credit.amount > 0 ? Math.max(0, Math.min(100, (left / u.credit.amount) * 100)) : 0;
+    const perReq = u.allTime.requests ? u.allTime.cost / u.allTime.requests : 0;
+    const reqsLeft = perReq ? Math.floor(left / perReq) : null;
+    credit.innerHTML = `<div class="stat-label">Credit left (estimate)</div>
+      <div class="stat-value"></div>
+      <div class="bar${pct < 15 ? " low" : ""}"><span style="width:${pct}%"></span></div>
+      <div class="stat-sub"></div>`;
+    credit.querySelector(".stat-value").textContent = `US${money(left)} of ${money(u.credit.amount)}`;
+    credit.querySelector(".stat-sub").textContent =
+      (reqsLeft !== null ? `That's roughly ${reqsLeft.toLocaleString()} more requests. ` : "") +
+      `Balance set ${new Date(u.credit.setAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}.`;
+  } else {
+    credit.innerHTML = `<div class="stat-label">Credit left</div><div class="stat-sub">Pop your current Anthropic balance in below and I'll keep a running count of what's left.</div>`;
+  }
+  body.append(credit);
+
+  const grid = document.createElement("div");
+  grid.className = "stats";
+  const reqs = (b) => `${b.requests} request${b.requests === 1 ? "" : "s"}`;
+  grid.append(
+    stat("Today", money(u.today.cost), reqs(u.today)),
+    stat("Last 7 days", money(u.last7Days)),
+    stat("This month", money(u.thisMonth.cost), reqs(u.thisMonth)),
+    stat("All time", money(u.allTime.cost), reqs(u.allTime)),
+  );
+  body.append(grid);
+
+  const note = document.createElement("p");
+  note.className = "fine";
+  const avg = u.allTime.requests ? money(u.allTime.cost / u.allTime.requests) : "–";
+  note.textContent = `Model: ${u.model}. Average ${avg} per request. Prices in US dollars. Voice transcription is free on Cloudflare's free tier.`;
+  body.append(note);
+
+  els.usageBody.replaceChildren(body);
+  if (u.credit) els.creditInput.placeholder = `currently ${Math.max(0, u.credit.remaining).toFixed(2)}`;
+}
+
+async function openUsage() {
+  closeMenu();
+  els.usageBody.innerHTML = '<p class="muted">Loading…</p>';
+  els.usageSheet.showModal();
+  try {
+    renderUsage(await api("/api/usage"));
+  } catch (e) {
+    els.usageBody.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "error";
+    p.textContent = e.message;
+    els.usageBody.append(p);
+  }
+}
+
+els.creditForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const raw = els.creditInput.value.trim();
+  if (!raw) return;
+  try {
+    renderUsage(await api("/api/usage/credit", { method: "POST", json: { amount: Number(raw) } }));
+    els.creditInput.value = "";
+    toast("Got it! I'll count down from there 💰");
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+// ---------------- Activity log ----------------
+
+const LOG_ICONS = { created: "✅", deleted: "🗑️", undo: "↩️", google: "📅", trello: "🔄", login: "🔑", error: "⚠️" };
+
+function timeAgo(iso) {
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+async function openLog() {
+  closeMenu();
+  els.logList.innerHTML = '<li class="muted">Loading…</li>';
+  els.logSheet.showModal();
+  try {
+    const log = await api("/api/log");
+    if (!log.length) {
+      els.logList.innerHTML = '<li class="muted">Nothing here yet. Everything I add, remove or change will show up here.</li>';
+      return;
+    }
+    els.logList.replaceChildren(
+      ...log.map((entry) => {
+        const li = document.createElement("li");
+        const icon = document.createElement("span");
+        icon.className = "log-icon";
+        icon.textContent = LOG_ICONS[entry.kind] || "•";
+        const text = document.createElement("div");
+        text.className = "log-text";
+        const label = entry.url ? Object.assign(document.createElement("a"), { href: entry.url, target: "_blank", rel: "noopener" }) : document.createElement("span");
+        label.textContent = entry.text;
+        const when = document.createElement("span");
+        when.className = "log-time";
+        when.textContent = timeAgo(entry.at);
+        when.title = new Date(entry.at).toLocaleString();
+        text.append(label, when);
+        li.append(icon, text);
+        return li;
+      }),
+    );
+  } catch (e) {
+    els.logList.innerHTML = "";
+    const li = document.createElement("li");
+    li.className = "error";
+    li.textContent = e.message;
+    els.logList.append(li);
+  }
+}
+
+$("#log-clear").addEventListener("click", async () => {
+  if (!confirm("Clear the activity log? (This doesn't delete any events or cards.)")) return;
+  try {
+    await api("/api/log", { method: "DELETE" });
+    els.logList.innerHTML = '<li class="muted">All clear ✨</li>';
+  } catch (e) {
+    toast(e.message);
+  }
+});
+
+$("#menu-usage").addEventListener("click", openUsage);
+$("#menu-log").addEventListener("click", openLog);
+document.querySelectorAll(".sheet").forEach((sheet) => {
+  sheet.querySelector(".sheet-close").addEventListener("click", () => sheet.close());
+  // Tap outside the sheet to close it.
+  sheet.addEventListener("click", (e) => {
+    if (e.target === sheet) sheet.close();
+  });
 });
 
 // ---------------- Login ----------------
@@ -450,10 +627,10 @@ els.loginForm.addEventListener("submit", async (e) => {
   if (google) {
     history.replaceState(null, "", "/");
     const msg = {
-      connected: "Google Calendar connected ✓",
-      denied: "Google connection was cancelled.",
-      bad_state: "Google sign-in expired. Try connecting again.",
-      failed: "Google didn't return a refresh token. Try connecting again.",
+      connected: "You're connected to Google Calendar 🎉",
+      denied: "No worries, Google wasn't connected. You can try again anytime.",
+      bad_state: "That Google sign-in timed out. Mind trying again?",
+      failed: "Google didn't quite finish connecting. Mind trying again?",
     }[google];
     if (msg) toast(msg, 3500);
   }
