@@ -36,7 +36,7 @@ npx wrangler login
 npx wrangler kv namespace create KV
 ```
 
-Copy the `id` it prints into `wrangler.toml`, replacing `REPLACE_WITH_YOUR_KV_NAMESPACE_ID`.
+Copy the `id` it prints into `wrangler.toml` (`[[kv_namespaces]]` → `id`). This repo is already set to the `dash-KV` namespace.
 
 ### 3. Deploy once to get your URL
 

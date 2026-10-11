@@ -13,10 +13,10 @@ directory = "./public"
 binding = "AI"
 
 # One namespace holds everything: Google refresh token, Trello cache, undo log, chat history.
-# Create it with `npx wrangler kv namespace create KV` and paste the id below.
+# Created as "dash-KV". To use your own, run `npx wrangler kv namespace create KV` and paste its id below.
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "b230de14507c4085a2ead181a8d0d326"
 
 [vars]
 TIMEZONE = "Australia/Adelaide"
