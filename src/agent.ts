@@ -19,6 +19,7 @@ How to work:
 - Calendar events need a time unless the user clearly means an all-day thing (birthdays, holidays, "all day", multi-day trips). If an appointment-like event has no time, ask.
 - Trello cards: match the list the user names to the catalogue (fuzzy matching on names and course codes is fine, e.g. "EDUC1222" or "reading and comprehending"). If they don't name a list, omit list_id to use the default list. Only give a card a due date if the user gives one, and a due time only if they give a specific time.
 - Ask a brief follow-up question instead of guessing when something important is missing or ambiguous: no time for an appointment, a list name that matches several lists or none. Ask one short question and create nothing until it's answered. Things that are clear in the same message can still be created.
+- If you create some items and also need to ask about another, put the question in the same message as the tool calls.
 - "Undo", "delete that", "scrap that": call delete_item (no ref undoes the last request's items; use a ref from 'Recently created' for a specific one).
 - If a tool fails, say what failed in one plain sentence. If Google isn't connected, tell the user to tap "Connect Google".
 
@@ -69,6 +70,19 @@ async function catalogText(ctx: ToolContext): Promise<string> {
   } catch (e) {
     return `Trello boards and lists: unavailable (${(e as Error).message}). Don't create cards; tell the user Trello isn't reachable.`;
   }
+}
+
+const WRITE_TOOLS = new Set(["create_calendar_event", "create_trello_card", "delete_item"]);
+
+/** Friendly one-line-per-item confirmation, built without calling the model. */
+function confirmation(ctx: ToolContext): string {
+  const lines = ctx.created.map((i) =>
+    i.kind === "event"
+      ? `Done! "${i.title}" is in for ${i.when}${i.where ? ` at ${i.where}` : ""}.`
+      : `Added "${i.title}" to ${i.where}${i.when ? `, ${i.when}` : ""} ✓`,
+  );
+  for (const d of ctx.deleted) lines.push(`Removed the ${d.kind === "event" ? "event" : "card"} "${d.title}".`);
+  return lines.join("\n") || "Done!";
 }
 
 export interface ChatResult {
@@ -131,17 +145,28 @@ export async function chat(env: Env, userText: string): Promise<ChatResult> {
       }
 
       const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+      let allClean = true; // every call was a create/delete that fully succeeded
       const results = await Promise.all(
         toolUses.map(async (tu, i): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
           try {
-            const out = await runTool(ctx, tu.name, (tu.input ?? {}) as Record<string, unknown>, step * 100 + i);
+            const out = (await runTool(ctx, tu.name, (tu.input ?? {}) as Record<string, unknown>, step * 100 + i)) as Record<string, unknown>;
+            if (!WRITE_TOOLS.has(tu.name) || out.ok !== true || out.labels_not_found) allClean = false;
             return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out) };
           } catch (e) {
+            allClean = false;
             console.error(`tool ${tu.name} failed`, e);
             return { type: "tool_result", tool_use_id: tu.id, content: (e as Error).message, is_error: true };
           }
         }),
       );
+
+      // Saves credits: when everything simply worked, write the confirmation here instead of
+      // paying for a second model call just to say "Done!". Keep any question the model asked.
+      if (allClean) {
+        const question = /\?\s*$/.test(text) ? text : "";
+        reply = [confirmation(ctx), question].filter(Boolean).join("\n");
+        break;
+      }
       messages.push({ role: "user", content: results });
     }
   } finally {

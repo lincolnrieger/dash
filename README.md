@@ -131,6 +131,7 @@ Trello boards and lists are cached for an hour. If you add a list and want it st
 - **Several items per message.** "Lunch with Sam Friday at 1, and remind me to book the restaurant" creates a calendar event *and* a Trello card.
 - **Ambiguity:** if an appointment has no time, or a list name matches several lists or none, it asks a short follow-up question instead of guessing.
 - **Defaults:** events last 1 hour unless you give an end time. Things like birthdays become all-day events. Cards only get a due date if you say one, and a due time only if you give a specific time.
+- **Saving credits:** when every create or delete succeeds, Dash writes the "Done!" confirmation itself instead of making a second model call. Only questions, errors and anything unusual go back to Claude.
 - **Undo:** typing or saying "undo", or tapping **Undo** under a reply, deletes everything the last message created. Repeat it to go further back (up to 10 messages). You can also say "delete the dentist one".
 - **Questions:** "what's on tomorrow?" or "am I free Friday afternoon?" read your calendar.
 - On Sonnet (not Haiku, which doesn't support it), if Claude declines a request on safety grounds, the API automatically retries it on a fallback model (`server-side-fallback-2026-07-01` beta, `fallbacks: "default"`).
